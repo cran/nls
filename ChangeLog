@@ -1,0 +1,112 @@
+1999-06-03  Douglas Bates  <bates@stat.wisc.edu>
+
+	* DESCRIPTION (Version): Changed version numbering to 0.2-1
+	instead of 0.2.1
+
+	* R/nls.R: Added clearNames calls in the assign calls within
+	nlsModel and nlsModel.plinear to prevent the doubling of component
+	names in the parameter vector.  Previously names like A.A were
+	constructed instead of A.
+
+1999-05-27  Douglas Bates  <bates@stat.wisc.edu>
+
+	* DESCRIPTION (Package): Set up files for the 0.2.0 release.
+
+1999-05-23  Douglas Bates  <bates@stat.wisc.edu>
+
+	* src/nls.c: Changed the calculation of delta for the
+	finite-difference derivatives.  The Hahn1 examples in the NISTnls
+	library were failing in the last version.
+
+	* R/nls.R: Added code in nlsModel and nlsModel.plinear to handle
+	global variables, such as "pi" in formulas.  Previously they were
+	not inserted into the environment.
+
+	Changed instances of "e" in getAnyError to ".error" both for
+	nlsModel and nlsModel.plinear
+
+	* R/nls.R: Need to modify the code that catches the singular
+	gradient matrices to set a flag that can be caught in the nls.c
+	code and return the result.
+
+1999-05-22  Douglas Bates  <bates@stat.wisc.edu>
+
+	* R/nls.R: Need to change the names on the parameters so A.A,
+	etc. are not created when just A is desired.
+
+	In R we need to change the name of the resid.nls function to
+	residuals.nls (is that consistent with S?).  Right now I have an
+	as.vector in there to strip the gradient attribute.
+
+	** must fix the model SSasympOff in zzModels.q.  It uses "input"
+	where it should be "x".
+
+1999-05-21  Douglas Bates  <bates@stat.wisc.edu>
+
+	* R/nls.R: Changed the handling of the control argument in nls.  I
+	think this way it should always have a complete set of values.
+
+	Changed the default value of tol in nlsControl to 0.00001.  It
+	seems that 0.001 was causing unfortunately premature termination
+	in some cases.
+
+	Added a default of getInitial(formula, data) for the start
+	argument.  Changed the form of the mCall argument to the "initial"
+	attribute from a call to a list.  Subsetting a call works
+	differently in R than in S.
+
+	Modified the order of the parameters being returned from the
+	plinear form of nls to conform with the order in S.  In some ways
+	it would make more sense to give the conditionally linear
+	parameters first but the other convention is already established
+	in S.
+
+	Changed the name of nlsControl to nls.control to conform to the
+	convention established in S.
+
+	Will have to change the behaviour of nlsList in R so it does not
+	use restart.
+
+1999-05-20  Saikat DebRoy  <saikat@stat.wisc.edu>
+
+	* R/nls.R: as.double() replaced with storage.mode() <- "double"
+	* src/nls.c (numeric_deriv): fixed problem with increment (see
+	below) by adding coercion to double in C code.
+
+1999-05-20  Douglas Bates  <bates@stat.wisc.edu>
+
+	* R/nls.R: Should modify nls so gradient terms are matched on
+	names, not on position.
+
+	Should add capability to profile nls models.
+
+	Should add multiresponse estimation.
+
+	Documentation for data sets and examples.
+
+1999-05-19  Douglas Bates  <bates@stat.wisc.edu>
+
+	* R/nls.R: Changed the formatting of the trace output.  Changed
+	the trace output for the partially linear model to include the
+	conditionally linear parameters.
+
+	Should install the selfStart capabilities from the lme library.
+	
+	Need to fix the calculation of the increment and convergence
+	criterion for the nls.plinear class.  The example
+	nls(conc ~ cbind(1,exp(-exp(lrc)*time)), Chloride, c(lrc=-1), 
+	    alg="plinear",trace = T)
+	fails.
+	
+	* src/nls.c: Caused the trace = T option to print the initial
+	state.
+
+	* data/Nitrite.R: Change this data set to be in stacked rather
+	than unstacked format.
+
+	* data/Coal.R: Added the Coal data and all the other data sets
+	from Bates and Watts (1988) "Nonlinear Regression Analysis and Its
+	Applications".
+
+	* R/nls.R: Should add a summary.nls function.
+	

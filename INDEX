@@ -1,0 +1,12 @@
+BOD                      Biochemical Oxygen Demand
+BOD2                     Biochemical Oxygen Demand
+Chloride                 Chloride ion concentrations
+Coal                     Coal liquefaction data
+Ethyl                    Ethyl Acrylate data
+Isom                     Isomerization data
+Leaves                   Growth of Leaves
+clearNames               remove the names from an object
+nls                      Nonlinear least squares
+nlsModel                 Create an nlsModel object
+setClass                 set the class of an object
+setNames                 set the names in an object
