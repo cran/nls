@@ -17,9 +17,10 @@ setNames(object, nm)
 \value{
   An object of the same sort as \code{object} with the new names assigned.
 }
-\author{Jose C. Pinheiro and Douglas M. Bates }
+\author{Douglas M. Bates and Saikat DebRoy }
 \seealso{\code{\link{clearNames}}}
 \examples{
+library( nls )
 setNames( 1:3, c("foo", "bar", "baz") )
 # this is just a short form of
 tmp <- 1:3

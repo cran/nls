@@ -16,9 +16,10 @@ clearNames(object)
 \value{
   An object similar to \code{object} but without names.
 }
-\author{ Jose Pinheiro and Douglas Bates}
+\author{ Douglas Bates and Saikat DebRoy}
 \seealso{\code{\link{setNames}}}
 \examples{
+library( nls )
 data( women )
 lapply( women, mean )               # has a names attribute
 clearNames( lapply( women, mean ) ) # removes the names

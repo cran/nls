@@ -1,4 +1,4 @@
-### $Id: BOD.R,v 1.2 1999/05/24 14:39:51 bates Exp $
+### $Id: BOD.R,v 1.1 1999/10/13 00:50:13 saikat Exp $
 ### Biochemical Oxygen Demand data from Marske
 "BOD" <-
   structure(list(Time = c(1, 2, 3, 4, 5, 7),

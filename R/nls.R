@@ -1,12 +1,12 @@
-### $Id: nls.R,v 1.9 1999/06/07 22:34:45 bates Exp $
+### $Id: nls.q,v 1.10 1999/11/10 15:17:07 saikat Exp $
 ###
 ###            Nonlinear least squares for R
 ###
-### Copyright 1999-1999 Saikat DebRoy <saikat@stat.wisc.edu>,
-###                     Douglas M. Bates <bates@stat.wisc.edu>,
-###                     Jose C. Pinheiro <jcp@research.bell-labs.com>
+### Copyright 1999-1999 Saikat DebRoy <saikat$stat.wisc.edu>,
+###                     Douglas M. Bates <bates$stat.wisc.edu>,
+###                     Jose C. Pinheiro <jcp$research.bell-labs.com>
 ###
-### This file is part of the nlme library for R and related languages.
+### This file is part of the nls library for R and related languages.
 ### It is made available under the terms of the GNU General Public
 ### License, version 2, or at your option, any later version,
 ### incorporated herein by reference.
@@ -22,229 +22,357 @@
 ### Software Foundation, Inc., 59 Temple Place - Suite 330, Boston,
 ### MA 02111-1307, USA
 
-nlsModel.plinear <- function( .form, .data, .start, .temp) {
-  .env <- environment( ) 
-  .ind <- as.list( .start )
-  .form <- as.formula( .form )
-  for( .i in all.vars( .form ) ) {
-    if (is.na(match(.i, names(.ind), no = NA))) {
-      .temp <- if(is.environment(.data))
-        get(.i, env = .data)
-      else  .data[[ .i ]]
-      if (is.null(.temp)) .temp <- get(.i)  # for cases like "pi"
-      storage.mode(.temp) <- "double"
-      assign( .i, .temp, envir = .env)
-    }
+nlsModel.plinear <- function( form, data, start ) {
+  thisEnv <- environment()
+  env <- new.env() 
+  for( i in names( data ) ) {
+    assign( i, data[[i]], envir = env )
   }
-  .p2 <- 0
-  for( .i in names( .ind ) ) {
-    .temp <- .start[[ .i ]]
-    storage.mode(.temp) <- "double"
-    assign( .i, .temp, envir = .env )
-    .ind[[ .i ]] <- .p2 + seq( along = .start[[ .i ]] )
-    .p2 <- .p2 + length( .start[[ .i ]] )
+  ind <- as.list( start )
+  p2 <- 0
+  for( i in names( ind ) ) {
+    temp <- start[[ i ]]
+    storage.mode( temp ) <- "double"
+    assign( i, temp, envir = env )
+    ind[[ i ]] <- p2 + seq( along = start[[ i ]] )
+    p2 <- p2 + length( start[[ i ]] )
   }
-  .lhs <- eval( .form[[2]] )
-  storage.mode(.lhs) <- "double"
-  .rhs <- eval( .form[[3]] )
-  storage.mode(.rhs) <- "double"
-  .p1 <- if(is.matrix(.rhs)) { ncol(.rhs) } else { 1 }
-  .p <- .p1 + .p2
-  .n <- length(.lhs)
-  .fac <- (.n - .p)/.p
-  .cc <- .QR.B <- NA
-  
-  if(is.null(attr( .rhs, "gradient" ))) {
-    .getRHS <- function()
-      .External("numeric_deriv", .form[[3]], names( .ind), .env)
-    .QR.rhs <- qr(.rhs <- .getRHS())
+  lhs <- eval( form[[2]], envir = env )
+  storage.mode( lhs ) <- "double"
+  rhs <- eval( form[[3]], envir = env )
+  storage.mode( rhs ) <- "double"
+  p1 <- if( is.matrix( rhs ) ) { ncol( rhs ) } else { 1 }
+  p <- p1 + p2
+  n <- length( lhs )
+  fac <- ( n -  p )/p
+  cc <- QR.B <- NA
+  useParams <- rep(TRUE, p2)
+  if( is.null( attr( rhs, "gradient" ) ) ) {
+    getRHS.noVarying <- function()
+      .External("numeric_deriv", form[[3]], names(ind), env, PACKAGE="nls")
+    getRHS <- getRHS.noVarying
+    rhs <- getRHS()
   } else {
-    .getRHS <- function()
-      eval( .form[[3]], envir = .env )
-    .QR.rhs <- qr(.rhs)
+    getRHS.noVarying <- function()
+      eval( form[[3]], envir = env )
+    getRHS <- getRHS.noVarying
   }
-  .lin <- qr.coef( .QR.rhs, .lhs )
-  .resid <- qr.resid(.QR.rhs, .lhs)
-  .topzero <- double(.p1)
-  .marg <- length(dim(attr(.rhs, "gradient")))
-  .dev <- sum( ( .resid )^2 )
-  if(.marg <= 1) {
-    .ddot <- function(A,b) A %*% b
-    .dtdot <- function(A,b) t(A) %*% b
-  } else if(.marg == 2) {
-    if(.p1 == 1) {
-      .ddot <- function(A,b) A*b
-      .dtdot <- function(A,b) t(b) %*% A
-    } else if(.p2 == 1) {
-      .ddot <- function(A,b) A %*% b
-      .dtdot <- function(A,b) t(A) %*% b
+  dimGrad <- dim(attr(rhs, "gradient"))
+  marg <- length(dimGrad)
+  if(marg > 0) {
+    gradSetArgs <- vector("list", marg+1)
+    for(i in 2:marg)
+      gradSetArgs[[i]] <- rep(TRUE, dimGrad[i-1])
+    useParams <- rep(TRUE, dimGrad[marg])
+  } else {
+    gradSetArgs <- vector("list", 2)
+    useParams <- rep(TRUE, length(attr(rhs, "gradient")))
+  }
+  gradSetArgs[[1]] <- (~attr(ans, "gradient"))[[2]]
+  gradCall <- 
+    switch(length(gradSetArgs) - 1,
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]]),
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]], gradSetArgs[[2]]),
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]], gradSetArgs[[2]],
+                gradSetArgs[[3]]),
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]], gradSetArgs[[2]],
+                gradSetArgs[[3]], gradSetArgs[[4]]))
+  getRHS.varying <- function()
+    {
+      ans <- getRHS.noVarying()
+      attr(ans, "gradient") <- eval(gradCall)
+      ans
+    }
+  QR.rhs <- qr( rhs )
+  lin <- qr.coef( QR.rhs, lhs )
+  resid <- qr.resid( QR.rhs, lhs )
+  topzero <- double( p1 )
+  dev <- sum( resid^2 )
+  if( marg <= 1) {
+    ddot <- function( A, b ) A %*% b
+    dtdot <- function( A, b ) t(A) %*% b
+  } else if( marg == 2 ) {
+    if( p1 == 1 ) {
+      ddot <- function( A, b ) A*b
+      dtdot <- function( A, b ) t(b) %*% A
+    } else if( p2 == 1 ) {
+      ddot <- function( A, b ) A %*% b
+      dtdot <- function( A, b ) t(A) %*% b
     }
   } else {
-    .ddot <- function(A,b) apply(A, MARGIN = 3, FUN="%*%", b)
-    .dtdot <- function(A,b) apply(A, MARGIN = c(2,3), FUN = "%*%", b)
+    ddot <- function( A, b ) apply( A, MARGIN = 3, FUN="%*%", b )
+    dtdot <- function( A, b ) apply( A, MARGIN = c(2,3), FUN = "%*%", b )
   }
-  .error <- NULL
-  .getPars <- function()
-    unlist( setNames( lapply( as.list(names(.ind)), get, envir =
-                             .env ), names( .ind ) ) )  
-  .m <-
-    setClass( list(resid = function() .resid,
-                   fitted = function() .rhs,
-                   formula = function() .form,
-                   deviance = function() .dev,
-                   gradient = function() attr( .rhs, "gradient" ),
-                   conv = function() {
-                     assign(".cc", c(.topzero, qr.qty( .QR.rhs,
-                                                      .lhs)[-(1:.p1)]),
-                            envir = .env)
-                     rr <- qr.qy( .QR.rhs, .cc)
-                     B <- qr.qty(.QR.rhs, .ddot(attr(.rhs, "gradient"), .lin)) 
-                     B[1:.p1, ] <- .dtdot(attr(.rhs, "gradient"), rr)
-                     R <- t(qr.R(.QR.rhs)[1:.p1,])
-                     if(.p1 == 1) B[1, ] <- B[1, ]/R
-                     else B[1:.p1, ] <- solve(R, B[1:.p1, ])
-                     assign(".QR.B",qr(B), envir = .env)
-                     rr <- qr.qty( .QR.B, .cc)
-                     sqrt( .fac*sum( rr[1:.p1]^2 ) / sum( rr[ -(1:.p1) ]^2 ) )
-                   },
-                   incr = function() {
-                     qr.solve( .QR.B, .cc)
-                   },
-                   setError = function(error) {
-                     assign(".error",
-                            switch(error,
-                                   "step factor reduced below minimum",
-                                   "maximum number of iterations exceeded",
-                                   "singular design matrix for linear parameters"),
-                            envir = .env)
-                   },
-                   handleAnyError = function(warnOnly = FALSE) {
-                     if(!is.null(.error)) {
-                       if(warnOnly) warning(.error)
-                       else stop(.error)
-                     }
-                   },
-                   setPars = function(newPars) {
-                     for(i in names(.ind) ) {
-                       assign( i, clearNames(newPars[ .ind[[i]] ]), envir = .env )
-                     }
-                     assign(".QR.rhs",qr(assign(".rhs",.getRHS(),envir =.env)),
-                            envir = .env)
-                     assign( ".resid", qr.resid(.QR.rhs, .lhs), envir=.env)
-                     assign(".dev",sum( ( .resid )^2), envir = .env)
-                     if (.QR.rhs$rank < .p1) {
-                       return(1)
-                     } else {
-                       assign( ".lin", qr.coef(.QR.rhs, .lhs), envir = .env )
-                       return(0)
-                     }
-                   },
-                   getPars = .getPars,
-                   getAllPars = function() {
-                     c(.getPars(), c(.lin = .lin))
-                   },
-                   getEnv = function() .env,
-                   trace = function() cat(format(.dev),":",
-                     format(c(.getPars(), .lin)),"\n"),
-                   Rmat = function()
-                     qr.R(qr(cbind(.ddot(attr(.rhs, "gradient"), .lin), .rhs)))
-                   ),
-             "nlsModel.plinear" )
-  .m$conv();
-  on.exit(remove(.i, .data, .start, .m, .n, .p, .temp, .marg))
-  .m
+
+  getPars.noVarying <- function()
+    unlist( setNames( lapply( names( ind ), get, envir = env ),
+                     names( ind ) ) )
+  getPars.varying <- function()
+    unlist( setNames( lapply( names( ind ), get, envir = env ),
+                     names( ind ) ) )[useParams]
+  getPars <- getPars.noVarying
+
+  internalPars <- getPars()
+  setPars.noVarying <- function(newPars)
+    {
+      assign("internalPars", newPars, envir = thisEnv)
+      for( i in names( ind ) ) {
+        assign( i, clearNames(newPars[ ind[[i]] ]), envir = env )
+      }
+    }
+  setPars.varying <- function(newPars)
+    {
+      internalPars[useParams] <- newPars
+      for( i in names( ind ) ) {
+        assign( i, clearNames(internalPars[ ind[[i]] ]), envir = env )
+      }
+    }
+  setPars <- setPars.noVarying
+  getPred <- 
+    if(is.matrix(rhs))
+      function(X) as.numeric(X %*% lin)
+    else function(X) X * lin
+
+  m <-
+    list(resid = function() resid,
+         fitted = function() getPred(rhs),
+         formula = function() form,
+         deviance = function() dev,
+         gradient = function() attr( rhs, "gradient" ),
+         conv = function() {
+           assign("cc", c( topzero, qr.qty( QR.rhs, lhs)[ -(1:p1)]),
+                  envir = thisEnv)
+           rr <- qr.qy( QR.rhs, cc )
+           B <- qr.qty( QR.rhs, ddot( attr( rhs, "gradient"), lin ) )
+           B[1:p1, ] <- dtdot( attr( rhs, "gradient" ), rr )
+           R <- t( qr.R( QR.rhs )[1:p1, ] )
+           if( p1 == 1 ) B[1, ] <- B[1, ]/R
+           else B[1:p1, ] <- forwardsolve(R, B[1:p1, ])
+           assign( "QR.B", qr(B), envir = thisEnv )
+           rr <- qr.qty( QR.B, cc )
+           sqrt( fac*sum( rr[1:p1]^2 ) / sum( rr[-(1:p1)]^2 ) )
+         },
+         incr = function() { qr.solve( QR.B, cc) },
+         setVarying = function(vary = rep(TRUE, length(useParams)))
+         {
+           assign("useParams", if(is.character(vary)) {
+             temp <- logical(length(useParams))
+             temp[unlist(ind[vary])] <- TRUE
+             temp
+           } else if(is.logical(vary) && length(vary) != length(useParams))
+             stop("setVarying : vary length must match length of parameters")
+           else {
+             vary
+           }, envir = thisEnv)
+           gradCall[[length(gradCall)]] <<- useParams
+           if(all(useParams)) {
+             assign("setPars", setPars.noVarying, envir = thisEnv)
+             assign("getPars", getPars.noVarying, envir = thisEnv)
+             assign("getRHS", getRHS.noVarying, envir = thisEnv)
+           } else {
+             assign("setPars", setPars.varying, envir = thisEnv)
+             assign("getPars", getPars.varying, envir = thisEnv)
+             assign("getRHS", getRHS.varying, envir = thisEnv)
+           }
+         },
+         setPars = function( newPars ) {
+           setPars(newPars)
+           assign("QR.rhs",
+                  qr( assign( "rhs", getRHS(), envir = thisEnv ) ),
+                  envir = thisEnv)
+           assign( "resid", qr.resid( QR.rhs, lhs ), envir = thisEnv )
+           assign("dev", sum( resid^2 ), envir = thisEnv )
+           if( QR.rhs$rank < p1 ) {
+             return(1)
+           } else {
+             assign( "lin", qr.coef( QR.rhs, lhs ), envir = thisEnv )
+             return(0)
+           }
+         },
+         getPars = function() getPars(),
+         getAllPars = function() {
+           c( getPars(), c( .lin = lin ) )
+         },
+         getEnv = function() env,
+         trace = function() cat( format( dev ),":",
+           format( c( getPars(), lin ) ), "\n" ),
+         Rmat = function()
+         {
+           qr.R( qr( cbind( ddot( attr( rhs, "gradient"), lin ), rhs )))
+         },
+         predict = function(newdata = list(), qr = FALSE)
+         {
+           Env <- new.env()
+           for (i in objects(envir = env)) {
+             assign(i, get(i, envir = env), envir = Env)
+           }
+           newdata <- as.list(newdata)
+           for (i in names(newdata)) {
+             assign(i, newdata[[i]], envir = Env)
+           }
+           getPred(eval(form[[3]], env = Env))
+         })
+  class(m) <- c("nlsModel.plinear", "nlsModel")
+  m$conv();
+  on.exit( remove( data, i, m, marg, n, p, start, temp, gradSetArgs) )
+  m
 }
 
-nlsModel <- function( .form, .data, .start ) {
-  .env <- environment( ) 
-  .ind <- as.list( .start )
-  .form <- as.formula( .form )
-  for( .i in all.vars( .form ) ) {
-    if (is.na(match(.i, names(.ind), no = NA))) {
-      .temp <- if(is.environment(.data))
-        get(.i, env=.data)
-      else  .data[[ .i ]]
-      if (is.null(.temp)) .temp <- get(.i)  # for cases like "pi"
-      storage.mode(.temp) <- "double"
-      assign( .i, .temp)
-    }
+nlsModel <- function( form, data, start ) {
+  thisEnv <- environment()
+  env <- new.env() 
+  for( i in names( data ) ) {
+    assign( i, data[[i]], envir = env )
   }
-  .offset <- 0
-  for( .i in names( .ind ) ) {
-    .temp <- .start[[ .i ]]
-    storage.mode(.temp) <- "double"
-    assign( .i, .temp )
-    .ind[[ .i ]] <- .offset + seq( along = .start[[ .i ]] )
-    .offset <- .offset + length( .start[[ .i ]] )
+  ind <- as.list( start )
+  parLength <- 0
+  for( i in names( ind ) ) {
+    temp <- start[[ i ]]
+    storage.mode( temp ) <- "double"
+    assign( i, temp, envir = env )
+    ind[[ i ]] <- parLength + seq( along = start[[ i ]] )
+    parLength <- parLength + length( start[[ i ]] )
   }
-  .lhs <- eval( .form[[2]] )
-  .rhs <- eval( .form[[3]] )
-  .resid <- .lhs - .rhs
-  .dev <- sum( ( .resid )^2 )
-  if(is.null(attr( .rhs, "gradient" ))) {
-    .getRHS <- function()
-      .External("numeric_deriv", .form[[3]], names( .ind), .env)
-    .QR <- qr(attr(.getRHS(), "gradient"))
+  useParams <- rep(TRUE, parLength)
+  lhs <- eval( form[[2]], envir = env )
+  rhs <- eval( form[[3]], envir = env )
+  resid <- lhs - rhs
+  dev <- sum( resid^2 )
+  if( is.null( attr( rhs, "gradient" ) ) ) {
+    getRHS.noVarying <- function()
+      .External("numeric_deriv", form[[3]], names(ind), env, PACKAGE="nls")
+    getRHS <- getRHS.noVarying
+    rhs <- getRHS()
   } else {
-    .getRHS <- function()
-      eval( .form[[3]])
-    .QR <- qr(attr( .rhs, "gradient" ))
+    getRHS.noVarying <- function()
+      eval( form[[3]], envir = env )
+    getRHS <- getRHS.noVarying
   }
-  .dim <- min(dim(.QR$qr))
-  if(.QR$rank < .dim)
-    stop("singular gradient matrix at initial parameter estimates");
-  .getPars <- function()
-    unlist( setNames( lapply( as.list(names(.ind)), get, envir =
-                             .env ), names( .ind ) ) )  
-  .error <- NULL
-  
-  on.exit(remove(.i, .data, .offset, .start, .temp))
-  setClass( list(resid = function() .resid,
-                 fitted = function() .rhs,
-                 formula = function() .form,
-                 deviance = function() sum( ( .resid )^2 ),
-                 gradient = function() attr( .rhs, "gradient" ),
-                 conv = function() {
-                   rr <- qr.qty( .QR, .resid ) # rotated residual vector
-                   p <- length( unlist( .ind ) )  # length of parameter vector
-                   sqrt( sum( rr[1:p]^2 ) / sum( rr[ -(1:p) ]^2 ) )
-                 },
-                 incr = function() {
-                   qr.coef( .QR, .resid )
-                 },
-                 setError = function(error) {
-                   assign(".error",
-                          switch(error,
-                                 "step factor reduced below minimum",
-                                 "maximum number of iterations exceeded",
-                                 "singular gradient matrix"),
-                          envir = .env)
-                 },
-                 handleAnyError = function(warnOnly = FALSE) {
-                   if(!is.null(.error)) {
-                     if(warnOnly) warning(.error)
-                     else stop(.error)
-                   }
-                 },
-                 setPars = function(newPars) {
-                   for(i in names(.ind) ) {
-                     assign( i, clearNames(newPars[ .ind[[i]] ]), envir = .env )
-                   }
-                   assign( ".resid",
-                          .lhs - assign(".rhs", .getRHS(), envir = .env ),
-                          envir = .env )
-                   assign(".dev",sum( ( .resid )^2), envir = .env)
-                   assign(".QR", qr( attr( .rhs, "gradient")), envir = .env )
-                   return(.QR$rank < .dim)  # to catch the singular gradient matrix
-                 },
-                 getPars = .getPars,
-                 getAllPars = .getPars,
-                 getEnv = function() .env,                   
-                 trace = function() cat(format(.dev),"\t: ",format(.getPars()),
-                   "\n"),
-                 Rmat = function() qr.R( .QR )
-                 ),
-           "nlsModel" )
+  dimGrad <- dim(attr(rhs, "gradient"))
+  marg <- length(dimGrad)
+  if(marg > 0) {
+    gradSetArgs <- vector("list", marg+1)
+    for(i in 2:marg)
+      gradSetArgs[[i]] <- rep(TRUE, dimGrad[i-1])
+    useParams <- rep(TRUE, dimGrad[marg])
+  } else {
+    gradSetArgs <- vector("list", 2)
+    useParams <- rep(TRUE, length(attr(rhs, "gradient")))
+  }
+  npar <- length(useParams)
+  gradSetArgs[[1]] <- (~attr(ans, "gradient"))[[2]]
+  gradCall <- 
+    switch(length(gradSetArgs) - 1,
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]]),
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]], gradSetArgs[[2]]),
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]], gradSetArgs[[2]],
+                gradSetArgs[[3]]),
+           call("[", gradSetArgs[[1]], gradSetArgs[[2]], gradSetArgs[[2]],
+                gradSetArgs[[3]], gradSetArgs[[4]]))
+  getRHS.varying <- function()
+    {
+      ans <- getRHS.noVarying()
+      attr(ans, "gradient") <- eval(gradCall)
+      ans
+    }
+  QR <- qr( attr( rhs, "gradient" ) )
+  qrDim <- min( dim( QR$qr ) )
+  if( QR$rank < qrDim)
+    stop( "singular gradient matrix at initial parameter estimates" );
+
+  getPars.noVarying <- function()
+    unlist( setNames( lapply( names( ind ), get, envir = env ),
+                     names( ind ) ) )
+  getPars.varying <- function()
+    unlist( setNames( lapply( names( ind ), get, envir = env ),
+                     names( ind ) ) )[useParams]
+  getPars <- getPars.noVarying
+
+  internalPars <- getPars()
+  setPars.noVarying <- function(newPars)
+    {
+      assign("internalPars", newPars, envir = thisEnv)
+      for( i in names( ind ) ) {
+        assign( i, clearNames(newPars[ ind[[i]] ]), envir = env )
+      }
+    }
+  setPars.varying <- function(newPars)
+    {
+      internalPars[useParams] <- newPars
+      for( i in names( ind ) ) {
+        assign( i, clearNames(internalPars[ ind[[i]] ]), envir = env )
+      }
+    }
+  setPars <- setPars.noVarying
+
+  on.exit(remove(i, data, parLength, start, temp))
+  m <-
+    list(resid = function() resid,
+         fitted = function() rhs,
+         formula = function() form,
+         deviance = function() dev,
+         gradient = function() attr( rhs, "gradient" ),
+         conv = function()
+         {
+           rr <- qr.qty( QR, resid ) # rotated residual vector
+           sqrt( sum( rr[1:npar]^2 ) / sum( rr[ -(1:npar) ]^2 ) )
+         },
+         incr = function() qr.coef( QR, resid ),
+         setVarying = function(vary = rep(TRUE, length(useParams)))
+         {
+           assign("useParams", if(is.character(vary)) {
+             temp <- logical(length(useParams))
+             temp[unlist(ind[vary])] <- TRUE
+             temp
+           } else if(is.logical(vary) && length(vary) != length(useParams))
+             stop("setVarying : vary length must match length of parameters")
+           else {
+             vary
+           }, envir = thisEnv)
+           gradCall[[length(gradCall)]] <<- useParams
+           if(all(useParams)) {
+             assign("setPars", setPars.noVarying, envir = thisEnv)
+             assign("getPars", getPars.noVarying, envir = thisEnv)
+             assign("getRHS", getRHS.noVarying, envir = thisEnv)
+             assign("npar", length(useParams), envir = thisEnv)
+           } else {
+             assign("setPars", setPars.varying, envir = thisEnv)
+             assign("getPars", getPars.varying, envir = thisEnv)
+             assign("getRHS", getRHS.varying, envir = thisEnv)
+             assign("npar", length((1:length(useParams))[useParams]),
+                    envir = thisEnv)
+           }
+         },
+         setPars = function( newPars )
+         {
+           setPars(newPars)
+           assign( "resid",
+                  lhs - assign("rhs", getRHS(), envir = thisEnv ),
+                  envir = thisEnv )
+           assign( "dev", sum( resid^2), envir = thisEnv)
+           assign( "QR", qr( attr( rhs, "gradient")), envir = thisEnv )
+           return( QR$rank < min( dim( QR$qr ) ) )  # to catch the singular gradient matrix
+         },
+         getPars = function() getPars(),
+         getAllPars = function() getPars(),
+         getEnv = function() env,
+         trace = function() cat( format( dev ),": ", format( getPars() ),
+           "\n"),
+         Rmat = function() qr.R( QR ),
+         predict = function(newdata = list(), qr = FALSE)
+         {
+           Env <- new.env()
+           for (i in objects(envir = env)) {
+             assign(i, get(i, envir = env), envir = Env)
+           }
+           newdata <- as.list(newdata)
+           for (i in names(newdata)) {
+             assign(i, newdata[[i]], envir = Env)
+           }
+           eval(form[[3]], env = Env)
+         })
+  class(m) <- "nlsModel"
+  m
 }
 
 nls.control <- function( maxiter = 50, tol = 0.00001, minFactor = 1/1024 ) {
@@ -252,28 +380,56 @@ nls.control <- function( maxiter = 50, tol = 0.00001, minFactor = 1/1024 ) {
 }
 
 nls <-
-  function (formula, data = sys.frame(sys.parent()),
-            start = getInitial(formula, data), control,
-            algorithm="default", trace = F, warnOnly = FALSE)
+  function (formula, data = list(),
+            start = getInitial( formula, data ), control,
+            algorithm="default", trace = F,
+            subset, weights, na.action, ...)
 {
+  mf <- match.call()             # for creating the model frame
+  mform <- formula <- as.formula( formula )
+  varNames <- all.vars(formula)  # parameter and variable names from formula
+
+  ## Heuristics for determining which names in formula represent actual
+  ## variables
+
+  ## If it is a parameter it is not a variable (nothing to guess here :-)
+  varNames <- varNames[is.na(match(varNames, names(start), nomatch = NA))]
+  ## If its length is a multiple of the response or LHS of the formula,
+  ## then it is probably a variable
+  ## This may fail if evaluation of formula[[2]] fails
+  varIndex <- sapply(varNames, function(varName, data, respLength)
+                     {
+                       length(eval(as.name(varName), data)) %% respLength == 0
+                     }, data, length(eval(formula[[2]], data)))
+
+  mf$formula <-                         # replace RHS by linear model formula
+    parse( text = paste("~", paste( varNames[varIndex], collapse = "+")))[[1]]
+
+  mf$start <- mf$control <- mf$algorithm <- mf$trace <- NULL
+  mf[[1]] <- as.name("model.frame")
+  mf <- as.list(eval(mf, sys.frame(sys.parent())))
+  for(var in varNames[!varIndex])
+    mf[[var]] <- eval(as.name(var), data)
+
   m <- switch(algorithm,
-              plinear=nlsModel.plinear(formula, data, start),
-              nlsModel(formula, data, start))
+              plinear = nlsModel.plinear( formula, mf, start ),
+              nlsModel( formula, mf, start ) )
   ctrl <- nls.control()
   if(!missing(control)) {
     control <- as.list(control)
     ctrl[names(control)] <- control
   }
-  m <- .External("nls_iter", m, ctrl, trace)
-  m$handleAnyError(warnOnly)
-  setClass(list(m = m, data = substitute(data), call = match.call()), "nls")
+  nls.out <- list(m = .External( "nls_iter", m, ctrl, trace ),
+                  data = substitute( data ), call = match.call(),
+                  PACKAGE="nls")
+  nls.out$call$control <- ctrl
+  nls.out$call$trace <- trace
+  class(nls.out) <- "nls"
+  nls.out
 }
 
 coef.nls <- function( x, ... ) x$m$getAllPars()
-weights.nls <- function( object, ... ) object$weights
-## The next two methods are defined in more generality in the lme library
-# residuals.nls <- function(object, ...) as.vector(object$m$resid())
-# fitted.nls <- function(object, ...) as.vector(object$m$fitted())
+
 print.nls <- function(x, ...) {
   cat( "Nonlinear regression model\n" )
   cat( "  model: ", deparse( formula(x) ), "\n" )
@@ -360,6 +516,72 @@ print.summary.nls <-
     invisible(x)
 }
 
+weights.nls <- function( object, ... ) object$weights
+
+predict.nls <-
+  function(object, newdata, se.fit = FALSE, scale = NULL, df = Inf,
+           interval = c("none", "confidence", "prediction"), level = 0.95,
+           ...)
+{
+  object$m$predict(newdata)
+}
+
 ### Force loading of the nls dynamic library in R
 .First.lib <- function(lib, pkg) library.dynam( "nls", pkg, lib )
-require(lme)
+
+
+fitted.nls <- 
+  function(object, ...)
+{
+  val <- as.vector(object$m$fitted())
+  
+  lab <- "Fitted values"
+  if (!is.null(aux <- attr(object, "units")$y)) {
+    lab <- paste(lab, aux)
+  }
+  attr(val, "label") <- lab
+  val
+}
+
+formula.nls <- function(object)
+  object$m$formula()
+
+residuals.nls <-
+  function(object, type = c("response", "pearson"), ...)
+{
+  type <- match.arg(type)
+  val <- as.vector(object$m$resid())
+  if (type == "pearson") {
+    std <- sqrt(sum(val^2)/(length(val) - length(coef(object))))
+    val <- val/std
+    attr(val, "label") <- "Standardized residuals"
+  } else {
+    lab <- "Residuals"
+    if (!is.null(aux <- attr(object, "units")$y)) {
+      lab <- paste(lab, aux)
+    }
+    attr(val, "label") <- lab
+  }
+  val
+}
+  
+logLik <- 
+  function(object, ...) UseMethod("logLik")
+
+logLik.nls <- 
+  function(object, REML = FALSE)
+{
+  if (REML) {
+    stop("Cannot calculate REML log-likelihood for nls objects")
+  }
+  res <- resid(object)
+  N <- length(res)
+  if(is.null(w <- object$weights)) {	
+    w <- rep(1, N)
+  }
+  val <-  -N * (log(2 * pi) + 1 - log(N) - sum(log(w)) + log(sum(w*res^2)))/2
+  attr(val, "df") <- length(object[["parameters"]]) + 1
+  attr(val, "nobs") <- attr(val, "nall") <- N
+  class(val) <- "logLik"
+  val
+}

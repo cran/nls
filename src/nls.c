@@ -1,5 +1,5 @@
 /*
- *  $Id: nls.c,v 1.8 1999/05/24 14:39:51 bates Exp $ 
+ *  $Id: nls.c,v 1.3 1999/10/22 17:10:12 saikat Exp $ 
  *
  *  Routines used in calculating least squares solutions in a
  *  nonlinear model in nls library for R.
@@ -45,7 +45,7 @@
  * get the list element named str. names is the name attribute of list
  */
 
-SEXP
+static SEXP
 getListElement(SEXP list, SEXP names, char *str) {
   SEXP elmt = (SEXP) NULL;
   char *tempChar;
@@ -63,9 +63,9 @@ getListElement(SEXP list, SEXP names, char *str) {
 
 /*
  *  call to nls_iter from R -
- *  .External("nls_iter", m, control)
+ *  .External("nls_iter", m, control, doTrace)
  *  where m and control are nlsModel and nlsControl objects.
- *  Return value is m
+ *  doTrace is a logical value.  The returned value is m.
  */
 
 SEXP
@@ -74,8 +74,7 @@ nls_iter(SEXP args) {
   double dev, fac, minFac, tolerance, newDev, convNew;
   int i, j, maxIter, hasConverged, nPars, doTrace;
   SEXP m, control, tmp, conv, incr, deviance, setPars, getPars, pars,
-    newPars, newIncr, trace, setError, errorCode;
-
+    newPars, newIncr, trace;
 
   args = CDR(args);
   m = CAR(args);
@@ -88,68 +87,59 @@ nls_iter(SEXP args) {
 
   PROTECT(control);
   if(!isNewList(control))
-    errorcall(control, " is an invalid value for control\n");
+    error("control must be a list\n");
   if(!isNewList(m))
-    errorcall(m, " is an invalid value for m\n");
+    error("m must be a list\n");
 
   PROTECT(tmp = getAttrib(control, R_NamesSymbol));
 
-  conv = getListElement(control,tmp,"maxiter");
-  if(conv == NULL  || !isNumeric(conv))
-    errorcall(args, "control$maxiter absent");
+  conv = getListElement(control, tmp, "maxiter");
+  if(conv == NULL || !isNumeric(conv))
+    error("control$maxiter absent");
   maxIter = asInteger(conv);
 
-  conv = getListElement(control,tmp,"tol");
+  conv = getListElement(control, tmp, "tol");
   if(conv == NULL || !isNumeric(conv))
-    errorcall(args, "control$tol absent");
+    error("control$tol absent");
   tolerance = asReal(conv);
 
-  conv = getListElement(control,tmp,"minFactor");
+  conv = getListElement(control, tmp, "minFactor");
   if(conv == NULL || !isNumeric(conv))
-    errorcall(args, "control$minFactor absent");
-
+    error("control$minFactor absent");
   minFac = asReal(conv);
-
 
   UNPROTECT(2);
 
   PROTECT(tmp = getAttrib(m, R_NamesSymbol));
 
-  conv = getListElement(m,tmp,"conv");
+  conv = getListElement(m, tmp, "conv");
   if(conv == NULL || !isFunction(conv))
-    errorcall(args, "m$conv() absent");
+    error("m$conv() absent");
   PROTECT(conv = lang1(conv));
 
-  incr = getListElement(m,tmp,"incr");
+  incr = getListElement(m, tmp, "incr");
   if(incr == NULL || !isFunction(incr))
-     errorcall(args, "m$incr() absent");
+     error("m$incr() absent");
   PROTECT(incr = lang1(incr));
 
-  deviance = getListElement(m,tmp,"deviance");
+  deviance = getListElement(m, tmp, "deviance");
   if(deviance == NULL || !isFunction(deviance))
-    errorcall(args, "m$deviance() absent");
+    error("m$deviance() absent");
   PROTECT(deviance = lang1(deviance));
 
-  trace = getListElement(m,tmp,"trace");
+  trace = getListElement(m, tmp, "trace");
   if(trace == NULL || !isFunction(trace))
-    errorcall(args, "m$trace() absent");
+    error("m$trace() absent");
   PROTECT(trace = lang1(trace));
 
-  setError = getListElement(m,tmp,"setError");
-  if(setError == NULL || !isFunction(setError))
-    errorcall(args, "m$setError() absent");
-  errorCode = allocVector(INTSXP, 1);
-  INTEGER(errorCode)[0] = 0;
-  PROTECT(setError = lang2(setError, errorCode));
-
-  setPars = getListElement(m,tmp,"setPars");
+  setPars = getListElement(m, tmp, "setPars");
   if(setPars == NULL || !isFunction(setPars))
-    errorcall(args, "m$setPars() absent");
+    error("m$setPars() absent");
   PROTECT(setPars);
 
-  getPars = getListElement(m,tmp,"getPars");
+  getPars = getListElement(m, tmp, "getPars");
   if(getPars == NULL || !isFunction(getPars))
-    errorcall(args, "m$getPars() absent");
+    error("m$getPars() absent");
   PROTECT(getPars = lang1(getPars));
 
   PROTECT(pars = eval(getPars, R_GlobalEnv));
@@ -163,6 +153,10 @@ nls_iter(SEXP args) {
 
   PROTECT(newPars = allocVector(REALSXP, nPars));
   for (i = 0; i < maxIter; i++) {
+    if((convNew = asReal(eval(conv,R_GlobalEnv))) < tolerance) {
+      hasConverged = TRUE;
+      break;
+    }
     PROTECT(newIncr = eval(incr,R_GlobalEnv));
     
     while(fac >= minFac) {
@@ -171,16 +165,14 @@ nls_iter(SEXP args) {
 
       PROTECT(tmp = lang2(setPars, newPars));
       if (asLogical(eval(tmp, R_GlobalEnv))) { /* singular gradient */
-	INTEGER(errorCode)[0] = 3;
-	eval(setError, R_GlobalEnv);
-	UNPROTECT(13);
-	return m;
+	UNPROTECT(12);
+        error("singular gradient");
       }
       UNPROTECT(1);
 
       newDev = asReal(eval(deviance, R_GlobalEnv));
 
-      if(newDev < dev) {
+      if(newDev <= dev) {
 	dev = newDev;
 	fac = MIN(2*fac, 1);
 	tmp = newPars;
@@ -192,24 +184,18 @@ nls_iter(SEXP args) {
     }
     UNPROTECT(1);
     if( fac < minFac ) {
-      INTEGER(errorCode)[0] = 1;
-      eval(setError, R_GlobalEnv);
-      UNPROTECT(11);
-      return m;
+      UNPROTECT(10);
+      error("step factor reduced below minimum");
     }
     if(doTrace) eval(trace,R_GlobalEnv); 
-    if((convNew = asReal(eval(conv,R_GlobalEnv))) < tolerance) {
-      hasConverged = TRUE;
-      break;
-    }
   }
 
   if(!hasConverged) {
-      INTEGER(errorCode)[0] = 2;
-      eval(setError, R_GlobalEnv);
+    UNPROTECT(10);
+    error("maximum number of iterations exceeded");
   }
 
-  UNPROTECT(11);
+  UNPROTECT(10);
   return m;
 }
 
@@ -232,11 +218,11 @@ numeric_deriv(SEXP args) {
   args = CDR(args);
   theta = CAR(args);
   if(!isString(theta))
-    errorcall(args, "theta should be of type character");
+    error("theta should be of type character");
   args = CDR(args);
   rho = CAR(args);
   if(!isEnvironment(rho))
-    errorcall(args, "rho should be an environment");
+    error("rho should be an environment");
 
   PROTECT(pars = allocVector(VECSXP, LENGTH(theta)));
 
@@ -257,7 +243,7 @@ numeric_deriv(SEXP args) {
   }
   INTEGER(gradDims)[lengthDims] = 0;
   for(i = 0; i < LENGTH(theta); i++) {
-    VECTOR(pars)[i] = findVar(install(CHAR(STRING(theta)[i])),rho);
+    VECTOR(pars)[i] = findVar(install(CHAR(STRING(theta)[i])), rho);
     INTEGER(gradDims)[lengthDims] += LENGTH(VECTOR(pars)[i]);
   }
   PROTECT(gradient = allocArray(REALSXP, gradDims));

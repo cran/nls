@@ -1,4 +1,4 @@
-### $Id: DNase.R,v 1.1.1.1 1999/04/01 00:56:43 saikat Exp $
+### $Id: DNase.R,v 1.1 1999/10/13 00:50:13 saikat Exp $
 ### Data on calibration runs for an assay of the enzyme DNase.
 ### cited in Davidian and Giltinan (1995) section 5.2.4, p.134
 "DNase" <-

@@ -1,3 +1,97 @@
+1999-11-10  Douglas Bates  <bates@stat.wisc.edu>
+
+	* man/plot.profile.nls.Rd: Escaped the % characters in the mtext
+	call in the example.
+
+1999-11-10  Saikat DebRoy  <saikat@stat.wisc.edu>
+
+	* zzModels.q: removed the functions phenoModel and quinModel to
+	newFunc.q file in the nlme package.
+
+	* nls.q, profile.q: added PACKAGE="nls" to .C and .External calls.
+
+	* nls.q (nlsModel.plinear): Replaced solve by forwardsolve in the
+	conv method.
+
+1999-11-09  Douglas Bates  <bates@stat.wisc.edu>
+
+	* man/plot.profile.nls.Rd: added manual page.
+
+1999-11-04  Douglas Bates  <bates@stat.wisc.edu>
+
+	* profile.q: Added a plot.profile.nls method.
+
+1999-10-28  Saikat DebRoy  <saikat@stat.wisc.edu>
+
+	* man/nlsModel.Rd: Added entry for predict in return value
+
+	* nls.q (nlsModel.plinear): Added predict method to the return
+	value. Corrected the fiited method in the return value.
+
+1999-10-27  Douglas Bates  <bates@stat.wisc.edu>
+
+	* nls.q: Added predict.nls.
+
+1999-10-26  Douglas Bates  <bates@stat.wisc.edu>
+
+	* GNUmakefile (VER): Changed to version 0.5-2.
+
+	* R/nlsFunc.R: Removed the fake version of xyplot as it is no
+	longer used in the nls package.
+
+1999-10-25  Saikat DebRoy  <saikat@stat.wisc.edu>
+
+	* INDEX: Added entries for new functions and data-sets
+
+1999-10-25  Douglas Bates  <bates@stat.wisc.edu>
+
+	* man/: Expanded the examples sections in several of the .Rd files
+	for the selfStart models.
+
+1999-10-23  Douglas Bates  <bates@stat.wisc.edu>
+
+	* data/: moved the data sets for "Nonlinear Regression Analysis
+	..." to a separate package.
+
+	* man/: moved documentation for the data sets for "Nonlinear
+	Regression Analysis .." to the NRAIAnls package.
+
+1999-10-23  Saikat DebRoy  <saikat@stat.wisc.edu>
+
+	* profile.q: Added - contains generics and methods for profiling
+	nls fitted objects.
+
+	* man/: Added documentation for profile, profiler, profile.nls and
+	profiler.nls.
+
+1999-10-13  Saikat DebRoy  <saikat@stat.wisc.edu>
+
+	* DESCRIPTION (Version): Changed version number to 0.5
+
+	* nls.q: Moved R/nls.R to nls.q. Added #ifdef's to allow use in
+	both R and S. Added definition of nls from the nlme library.
+	Changed nls() to have new arguments subset and na.action.
+
+	* nlsFunc.q: Moved R/utility.R to nlsFunc.q. Added #ifdef's to
+	allow use in both R and S. Added definition of methods for nls
+	from the nlme library.
+
+	* zzModels.q: Copied from nlme library for S.
+
+	* selfStart.q: Copied from nlme library for S.
+
+	* GNUmakefile: Added to take care of creation of R or S version
+	specific distributions.
+
+	* man/: Added man files for new functions taken from the nlme library.
+
+1999-08-29  Douglas Bates  <bates@stat.wisc.edu>
+
+	* R/nls.R: Changed definitions of nlsModel and nlsModel.plinear to
+	use an environment created with new.env() to store the data and
+	parameters.   This allows us to remove all the .'s in front of the
+	names of variables stored in the frame.
+
 1999-08-09  Douglas Bates  <bates@stat.wisc.edu>
 
 	* R/nls.R: Added summary.nls and print.summary.nls.  Cleaned up

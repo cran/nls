@@ -35,5 +35,6 @@ fm2 <- nls(demand ~ (1-exp(-exp(lrc)*Time)), data = BOD,
    start = c(lrc = log(.35)), algorithm = "plinear", trace = TRUE)
 # using a self-starting model
 fm3 <- nls(demand ~ SSasympOrig(Time, A, lrc), data = BOD)
+summary( fm3 )
 }
 \keyword(datasets)
