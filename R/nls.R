@@ -1,10 +1,10 @@
-### $Id: nls.R,v 1.8 1999/05/27 19:37:56 bates Exp $
+### $Id: nls.R,v 1.9 1999/06/07 22:34:45 bates Exp $
 ###
 ###            Nonlinear least squares for R
 ###
-### Copyright 1999-1999 Jose C. Pinheiro <jcp@research.bell-labs.com>,
+### Copyright 1999-1999 Saikat DebRoy <saikat@stat.wisc.edu>,
 ###                     Douglas M. Bates <bates@stat.wisc.edu>,
-###                     Saikat DebRoy <saikat@stat.wisc.edu>
+###                     Jose C. Pinheiro <jcp@research.bell-labs.com>
 ###
 ### This file is part of the nlme library for R and related languages.
 ### It is made available under the terms of the GNU General Public
@@ -23,25 +23,24 @@
 ### MA 02111-1307, USA
 
 nlsModel.plinear <- function( .form, .data, .start, .temp) {
-  on.exit(remove(.i, .data, .start))
   .env <- environment( ) 
   .ind <- as.list( .start )
   .form <- as.formula( .form )
   for( .i in all.vars( .form ) ) {
     if (is.na(match(.i, names(.ind), no = NA))) {
       .temp <- if(is.environment(.data))
-        get(.i, env=.data)
+        get(.i, env = .data)
       else  .data[[ .i ]]
       if (is.null(.temp)) .temp <- get(.i)  # for cases like "pi"
       storage.mode(.temp) <- "double"
-      assign( .i, .temp)
+      assign( .i, .temp, envir = .env)
     }
   }
   .p2 <- 0
   for( .i in names( .ind ) ) {
     .temp <- .start[[ .i ]]
     storage.mode(.temp) <- "double"
-    assign( .i, .temp )
+    assign( .i, .temp, envir = .env )
     .ind[[ .i ]] <- .p2 + seq( along = .start[[ .i ]] )
     .p2 <- .p2 + length( .start[[ .i ]] )
   }
@@ -49,9 +48,7 @@ nlsModel.plinear <- function( .form, .data, .start, .temp) {
   storage.mode(.lhs) <- "double"
   .rhs <- eval( .form[[3]] )
   storage.mode(.rhs) <- "double"
-  .p1 <- if(is.matrix(.rhs))
-    ncol(.rhs)
-  else 1
+  .p1 <- if(is.matrix(.rhs)) { ncol(.rhs) } else { 1 }
   .p <- .p1 + .p2
   .n <- length(.lhs)
   .fac <- (.n - .p)/.p
@@ -63,7 +60,7 @@ nlsModel.plinear <- function( .form, .data, .start, .temp) {
     .QR.rhs <- qr(.rhs <- .getRHS())
   } else {
     .getRHS <- function()
-      eval( .form[[3]])
+      eval( .form[[3]], envir = .env )
     .QR.rhs <- qr(.rhs)
   }
   .lin <- qr.coef( .QR.rhs, .lhs )
@@ -149,15 +146,16 @@ nlsModel.plinear <- function( .form, .data, .start, .temp) {
                    getEnv = function() .env,
                    trace = function() cat(format(.dev),":",
                      format(c(.getPars(), .lin)),"\n"),
-                   Rmat = function() qr.R( .QR )
+                   Rmat = function()
+                     qr.R(qr(cbind(.ddot(attr(.rhs, "gradient"), .lin), .rhs)))
                    ),
              "nlsModel.plinear" )
   .m$conv();
+  on.exit(remove(.i, .data, .start, .m, .n, .p, .temp, .marg))
   .m
 }
 
 nlsModel <- function( .form, .data, .start ) {
-  on.exit(remove(.i, .data, .offset, .start))
   .env <- environment( ) 
   .ind <- as.list( .start )
   .form <- as.formula( .form )
@@ -200,6 +198,7 @@ nlsModel <- function( .form, .data, .start ) {
                              .env ), names( .ind ) ) )  
   .error <- NULL
   
+  on.exit(remove(.i, .data, .offset, .start, .temp))
   setClass( list(resid = function() .resid,
                  fitted = function() .rhs,
                  formula = function() .form,
@@ -252,7 +251,7 @@ nls.control <- function( maxiter = 50, tol = 0.00001, minFactor = 1/1024 ) {
   list( maxiter = maxiter, tol = tol, minFactor = minFactor )
 }
 
-"nls" <-
+nls <-
   function (formula, data = sys.frame(sys.parent()),
             start = getInitial(formula, data), control,
             algorithm="default", trace = F, warnOnly = FALSE)
@@ -267,20 +266,98 @@ nls.control <- function( maxiter = 50, tol = 0.00001, minFactor = 1/1024 ) {
   }
   m <- .External("nls_iter", m, ctrl, trace)
   m$handleAnyError(warnOnly)
-  setClass(list(m = m, data = substitute(data)), "nls")
+  setClass(list(m = m, data = substitute(data), call = match.call()), "nls")
 }
 
 coef.nls <- function( x, ... ) x$m$getAllPars()
+weights.nls <- function( object, ... ) object$weights
 ## The next two methods are defined in more generality in the lme library
 # residuals.nls <- function(object, ...) as.vector(object$m$resid())
 # fitted.nls <- function(object, ...) as.vector(object$m$fitted())
 print.nls <- function(x, ...) {
   cat( "Nonlinear regression model\n" )
-  cat( "  model: ", deparse( x$m$formula() ), "\n" )
+  cat( "  model: ", deparse( formula(x) ), "\n" )
   cat( "   data: ", as.character( x$data ), "\n" )
   print( x$m$getAllPars() )
   cat( " residual sum-of-squares: ", format( x$m$deviance() ), "\n" )
   invisible(x)
+}
+
+summary.nls <- function (object, ...) 
+{
+  z <- .Alias(object)
+  resid <- resid(z)
+  n <- length(resid)
+  param <- coef(z)
+  pnames <- names(param)
+  p <- length(param)
+  rdf <- n - p
+  p1 <- 1:p
+  r <- resid(z)
+  f <- fitted(z)
+  w <- weights(z)
+  R <- z$m$Rmat()
+  w <- weights(z)
+  if (!is.null(w)) {
+    w <- w^0.5
+    resid <- resid * w
+    f <- f * w
+    excl <- w == 0
+    if (any(excl)) {
+      warning(paste(sum(excl), "rows with zero weights not counted"))
+      r <- r[!excl]
+      f <- f[!excl]
+      rdf <- rdf - sum(excl)
+    }
+  }
+  rss <- z$m$deviance()
+  if (n > p) {
+    resvar <- rss/rdf
+  }
+  R <- chol2inv(R)
+  dimnames(R) <- list(pnames, pnames)
+  se <- sqrt(diag(R) * resvar)
+  correl <- (R * resvar)/outer(se, se)
+  ans <- list(formula = formula(z), residuals = r, sigma = sqrt(resvar),
+              df = c(p, rdf), cov.unscaled = R, correlation = correl)
+  tval <- param/se
+  param <- cbind( param, se, tval, 2 * (1 - pt(abs(tval), rdf)) )
+  dimnames(param) <-
+    list(pnames, c("Estimate", "Std. Error", "t value", "Pr(>|t|)"))
+  ans$parameters <- param
+  class(ans) <- "summary.nls"
+  ans
+}
+
+print.summary.nls <-
+  function (x, digits = max(3, .Options$digits - 3), symbolic.cor = p > 
+            4, signif.stars = .Options$show.signif.stars, ...) 
+{
+    cat("\nFormula: ")
+    cat(paste(deparse(x$formula), sep = "\n", collapse = "\n"), 
+        "\n", sep = "")
+    df <- x$df
+    rdf <- df[2]
+    cat("\nParameters:\n")
+    print.coefmat(x$parameters, digits = digits, signif.stars = signif.stars, 
+        ...)
+    cat("\nResidual standard error:", format(signif(x$sigma, 
+        digits)), "on", rdf, "degrees of freedom\n")
+    correl <- x$correlation
+    if (!is.null(correl)) {
+        p <- dim(correl)[2]
+        if (p > 1) {
+            cat("\nCorrelation of Parameter Estimates:\n")
+            if (symbolic.cor) 
+                print(symnum(correl)[-1, -p])
+            else {
+                correl[!lower.tri(correl)] <- NA
+                print(correl[-1, -p, drop = FALSE], digits = digits, na = "")
+            }
+        }
+    }
+    cat("\n")
+    invisible(x)
 }
 
 ### Force loading of the nls dynamic library in R
